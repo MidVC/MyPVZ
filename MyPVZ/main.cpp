@@ -6,6 +6,8 @@
 * 4. Add the plants bar
 * 5. Add the plants' cards
 * 6. Add the rendering of the plant being dragged
+* 7. Add the planting of the plants
+* 8. Add the rendering of movement of plants on the map
 */
 
 #include <stdio.h>
@@ -20,10 +22,17 @@ enum {PEASHOOTER, SUNFLOWER, PLANTS_COUNT};
 IMAGE imgBg;
 IMAGE imgBar;
 IMAGE imgCards[PLANTS_COUNT];
-IMAGE *imgPlant[PLANTS_COUNT][20];   
+IMAGE *imgPlant[PLANTS_COUNT][20];   // 20 means that there are at most 20 frames of movement per plant
 
 int curX, curY; // The coordination of the plant currently selected
 int curPlant = -1; // -1: no selection, 0 = first plant(peashooter), 1 = second plant ......
+
+struct plant {
+	int type; // -1: no plant, 0: peashooter, 1: sunflower ...
+	int frame_index; // The index of the sequence of frame currently displaying
+};
+
+struct plant map[3][9];
 
 bool fileExist(const char* name) {
 	FILE* fp = fopen(name, "r");
@@ -41,6 +50,7 @@ void gameInit() {
 	loadimage(&imgBar, "res/bar5.png");
 
 	memset(imgPlant, 0, sizeof(imgPlant));
+	memset(map, -1, sizeof(map));
 
 	// Initialize the plant cards
 	char name[64];
@@ -67,6 +77,10 @@ void gameInit() {
 	initgraph(WIN_WIDTH, WIN_HEIGHT, 1);
 }
 
+void startUI() {
+
+}
+
 void updateWindow() {
 	BeginBatchDraw(); // Start the buffer
 
@@ -80,12 +94,25 @@ void updateWindow() {
 
 	}
 
+	// Render the map
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 9; j++) {
+			if (map[i][j].type != -1) {
+				int x = 256 + j * 81;
+				int y = 190 + i * 102;
+				int plant_type = map[i][j].type; // Debug: Change the index 
+				int index = map[i][j].frame_index;
+				putimagePNG(x, y, imgPlant[plant_type][index]);
+			}
+		}
+	}
+
 	// Render the plants that are being dragged
 	if (curPlant >= 0) {
 		IMAGE* img = imgPlant[curPlant][0];
 		int img_height = img->getheight();
 		int img_width = img->getwidth();
-		putimagePNG(curX - img_width/2, curY - img_height/2, img);
+		putimagePNG(curX - img_width / 2, curY - img_height / 2, img);
 	}
 
 	EndBatchDraw(); // End the buffer
@@ -94,7 +121,7 @@ void updateWindow() {
 void userClick() {
 
 	ExMessage msg;
-	static int status = 0;
+	static int status = 0; // Stores if a plant is selected now
 	if (peekmessage(&msg)) {
 		if (msg.message == WM_LBUTTONDOWN) {
 			if (msg.x > 338 && msg.x < 338 + 65 * PLANTS_COUNT &&
@@ -103,6 +130,8 @@ void userClick() {
 				printf("%d\n", index);
 				status = 1;
 				curPlant = index;
+				curX = msg.x;
+				curY = msg.y;
 			}
 		}
 		else if (msg.message == WM_MOUSEMOVE && status == 1) {
@@ -110,19 +139,61 @@ void userClick() {
 			curY = msg.y;
 		}
 		else if (msg.message == WM_LBUTTONUP) {
+			if (msg.x > 256 && msg.y > 179 && msg.y < 489) {
+				int row = (msg.y - 179) / 102;
+				int col = (msg.x - 256) / 81;
+				printf("%d, %d\n", row, col);
 
+				if (map[row][col].type == -1) {
+					map[row][col].type = curPlant;
+					map[row][col].frame_index = 1;
+				}
+			}
+			
+
+			curPlant = -1;
+			status = 0;
 		}
 	}
 
 }
 
+void updateGame() {
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 9; j++) {
+			if (map[i][j].type >= 0) {
+				map[i][j].frame_index++;
+				int plant_type = map[i][j].type;
+				int frame_index = map[i][j].frame_index;
+				if (imgPlant[plant_type][frame_index] == NULL) {
+					map[i][j].frame_index = 1;
+				}
+			}
+		}
+	}
+}
+
 int main(void) {
 	gameInit();
 
+	int timer = 0;
+	bool flag = false;
 	while (1) {
 		userClick();
 
-		updateWindow();
+		timer += getDelay();
+		if (timer > 20) {
+			flag = true;
+			timer = 0;
+		}
+
+		if (flag) {
+			flag = false;
+
+			updateWindow();
+			updateGame();
+		}
+		
 	}
 
 	system("pause");

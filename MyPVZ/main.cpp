@@ -9,10 +9,12 @@
 * 7. Add the planting of the plants
 * 8. Add the rendering of movement of plants on the map
 * 9. Added the game UI
+* 10. Added the logic of randomly generated sunshine
 */
 
 #include <stdio.h>
 #include <graphics.h>
+#include <time.h>
 #include "tools.h"
 
 // Width and height of the game window
@@ -41,6 +43,20 @@ struct plant {
 // The map for the plants
 struct plant map[3][9];
 
+struct sunshineBall {
+	int x;
+	int y; // x and y stores the position that the sunshineBall locates at
+	int frameIndex; // The index of frame that should be rendered now
+	int dest_y; // The destination that the sunshine should be at
+	int in_use; // Stores whether the sunshineBall is in use
+};
+
+// All the sunshine balls. Will be recycled after the sunshine is collected
+// Thus, there is a maximum of 50 sunshine balls that can exist simultaneously
+struct sunshineBall all_balls[50]; 
+// The frames of SunshineBalls
+IMAGE imagSunshineBall[29];
+
 // Helper function that help determines whether a file exists
 bool fileExist(const char* name) {
 	FILE* fp = fopen(name, "r"); // Would return null if open failed
@@ -53,14 +69,19 @@ bool fileExist(const char* name) {
 
 // Function to initialize the game
 void gameInit() {
+
+	// Assign the seed to generate the random number between 0 and 640 (900 - 260 = 640)
+	srand(time(NULL));
+
 	// Load the background image
 	// Changed character set setting to "Multi-Byte"
 	loadimage(&imgBg, "res/bg.jpg");
 	loadimage(&imgBar, "res/bar5.png");
 
-	// Set the memory in the two arrays appropriately
+	// Set the memory in the arrays appropriately
 	memset(imgPlant, 0, sizeof(imgPlant));
 	memset(map, -1, sizeof(map));
+	memset(all_balls, 0, sizeof(all_balls));
 
 	// Initialize the plant cards
 	char name[64];
@@ -69,7 +90,9 @@ void gameInit() {
 		sprintf_s(name, sizeof(name), "res/Cards/card_%d.png", i+1);
 		loadimage(&imgCards[i], name);
 
-		// Also load the images of the frames
+		// Also load the images of the frames. Because different plants have
+		//   different number of frames, we need to determine when the last
+		//   frame have been loaded
 		for (int j = 0; j < 20; j++) {
 			sprintf_s(name, sizeof(name), "res/plants_moving/%d/%d.png", i, j+1);
 			if (fileExist(name)) {
@@ -82,6 +105,11 @@ void gameInit() {
 				break;
 			}
 		}
+	}
+
+	// Initialize all the sunshineBalls stored
+	for (int i = 0; i < 29; i++) {
+		sprintf_s(name, sizeof(name), "res/sunshine/%d.png", i + 1);
 	}
 
 	// Create the game window
@@ -146,7 +174,7 @@ void updateWindow() {
 				int x = 256 + j * 81;
 				int y = 190 + i * 102;
 				int plant_type = map[i][j].type; // Debug: Change the index 
-				int index = map[i][j].frame_index;
+				int index = map[i][j].frame_index / 3;
 				putimagePNG(x, y, imgPlant[plant_type][index]);
 			}
 		}
@@ -204,6 +232,35 @@ void userClick() {
 
 }
 
+void createSunshine() {
+
+	// Limit the frequency of the sunshine generated
+	static int count = 0;
+	static int frequency = 400;
+	count++;
+	if (count >= frequency) {
+		frequency = 200 + rand() % 200;
+		count = 0;
+
+		// Take a usable ball from all the balls in the array
+		int max_balls = sizeof(all_balls);
+
+		int i = 0;
+		for (i = 0; i < max_balls && all_balls[i].in_use; i++);
+		// If i = max_balls, then all the array of sunshine balls have been
+		//   searched, but no available sunshine ball was find. Thus, this function
+		//   simply ends.
+		if (i >= max_balls) return;
+
+		all_balls[i].in_use = 1;
+		all_balls[i].frameIndex = 0;
+		// Assign random numbers
+		all_balls[i].x = 260 + rand() % (900 - 260);
+		all_balls[i].y = 60;
+		all_balls[i].dest_y = 200 + (rand() % 4) * 90;
+	}
+}
+
 // Update the map during the game
 void updateGame() {
 	for (int i = 0; i < 3; i++) {
@@ -211,13 +268,15 @@ void updateGame() {
 			if (map[i][j].type >= 0) {
 				map[i][j].frame_index++;
 				int plant_type = map[i][j].type;
-				int frame_index = map[i][j].frame_index;
+				int frame_index = map[i][j].frame_index / 3;
 				if (imgPlant[plant_type][frame_index] == NULL) {
 					map[i][j].frame_index = 1;
 				}
 			}
 		}
 	}
+
+	createSunshine(); // Create the sunshine
 }
 
 int main(void) {

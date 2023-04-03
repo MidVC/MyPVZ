@@ -8,34 +8,42 @@
 * 6. Add the rendering of the plant being dragged
 * 7. Add the planting of the plants
 * 8. Add the rendering of movement of plants on the map
+* 9. Added the game UI
 */
 
 #include <stdio.h>
 #include <graphics.h>
 #include "tools.h"
 
+// Width and height of the game window
 #define WIN_WIDTH 900
 #define WIN_HEIGHT 600
 
+// Plants list (selected)
 enum {PEASHOOTER, SUNFLOWER, PLANTS_COUNT};
 
+// imgBg is the game background, imgBar is the plants bar, imgCards are the 
+// cards of the selected plants, and imgPlant stores the frames of the plants
 IMAGE imgBg;
 IMAGE imgBar;
 IMAGE imgCards[PLANTS_COUNT];
-IMAGE *imgPlant[PLANTS_COUNT][20];   // 20 means that there are at most 20 frames of movement per plant
+IMAGE *imgPlant[PLANTS_COUNT][20];  
+// 20 means that there are at most 20 frames of movement per plant
 
 int curX, curY; // The coordination of the plant currently selected
-int curPlant = -1; // -1: no selection, 0 = first plant(peashooter), 1 = second plant ......
+int curPlant = -1; // -1: no selection, 0 = first plant(peashooter), 1 = second plant ...
 
 struct plant {
 	int type; // -1: no plant, 0: peashooter, 1: sunflower ...
 	int frame_index; // The index of the sequence of frame currently displaying
 };
 
+// The map for the plants
 struct plant map[3][9];
 
+// Helper function that help determines whether a file exists
 bool fileExist(const char* name) {
-	FILE* fp = fopen(name, "r");
+	FILE* fp = fopen(name, "r"); // Would return null if open failed
 	if (fp) {
 		fclose(fp);
 		return true;
@@ -43,22 +51,25 @@ bool fileExist(const char* name) {
 	return false;
 }
 
+// Function to initialize the game
 void gameInit() {
 	// Load the background image
 	// Changed character set setting to "Multi-Byte"
 	loadimage(&imgBg, "res/bg.jpg");
 	loadimage(&imgBar, "res/bar5.png");
 
+	// Set the memory in the two arrays appropriately
 	memset(imgPlant, 0, sizeof(imgPlant));
 	memset(map, -1, sizeof(map));
 
 	// Initialize the plant cards
 	char name[64];
 	for (int i = 0; i < PLANTS_COUNT; i++) {
-		// Generate the name of the card file (image)
+		// Generate the name of the card file (image) and load that image
 		sprintf_s(name, sizeof(name), "res/Cards/card_%d.png", i+1);
 		loadimage(&imgCards[i], name);
 
+		// Also load the images of the frames
 		for (int j = 0; j < 20; j++) {
 			sprintf_s(name, sizeof(name), "res/plants_moving/%d/%d.png", i, j+1);
 			if (fileExist(name)) {
@@ -77,10 +88,44 @@ void gameInit() {
 	initgraph(WIN_WIDTH, WIN_HEIGHT, 1);
 }
 
+// Function to start the UI of the game
 void startUI() {
+	
+	// see resources for the usage of those images
+	IMAGE img_menu, img_start1, img_start2;
+	loadimage(&img_menu, "res/menu.png");
+	loadimage(&img_start1, "res/menu1_eng.png");
+	loadimage(&img_start2, "res/menu2_eng.png");
 
+	// selected = 0 means that the start button is not selected
+	// selected = 1 means that the start button is selected
+	int selected = 0;
+	while (1) {
+		BeginBatchDraw();
+		// render the background image
+		putimage(0, 0, &img_menu);
+		// render the start button
+		putimagePNG(460, 60, selected ? &img_start2 : &img_start1);
+
+		// If the user clicks the button, then start the game
+		ExMessage msg;
+		if (peekmessage(&msg)) {
+			if (msg.message == WM_LBUTTONDOWN &&
+				msg.x > 460 && msg.x < 460+364 &&
+				msg.y > 60 && msg.y < 60+169) {
+				selected = 1;
+
+			}
+			else if (msg.message == WM_LBUTTONUP) {
+				return;
+			}
+		}
+
+		EndBatchDraw();
+	}
 }
 
+// Function to update the window that the player sees
 void updateWindow() {
 	BeginBatchDraw(); // Start the buffer
 
@@ -118,6 +163,7 @@ void updateWindow() {
 	EndBatchDraw(); // End the buffer
 }
 
+// Detect Click from user in game
 void userClick() {
 
 	ExMessage msg;
@@ -158,6 +204,7 @@ void userClick() {
 
 }
 
+// Update the map during the game
 void updateGame() {
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 9; j++) {
@@ -176,6 +223,7 @@ void updateGame() {
 int main(void) {
 	gameInit();
 
+	startUI();
 	int timer = 0;
 	bool flag = false;
 	while (1) {

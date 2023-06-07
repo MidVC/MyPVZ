@@ -13,9 +13,12 @@
 */
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <graphics.h>
 #include <time.h>
 #include "tools.h"
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 
 // Width and height of the game window
 #define WIN_WIDTH 900
@@ -48,7 +51,8 @@ struct sunshineBall {
 	int y; // x and y stores the position that the sunshineBall locates at
 	int frameIndex; // The index of frame that should be rendered now
 	int dest_y; // The destination that the sunshine should be at
-	int in_use; // Stores whether the sunshineBall is in use
+	bool in_use; // Stores whether the sunshineBall is in use
+	int timer; // Stores the time after the sunshine have been generated
 };
 
 // All the sunshine balls. Will be recycled after the sunshine is collected
@@ -56,6 +60,9 @@ struct sunshineBall {
 struct sunshineBall all_balls[50]; 
 // The frames of SunshineBalls
 IMAGE imagSunshineBall[29];
+
+// Sunshine
+int sunshine = -1;
 
 // Helper function that help determines whether a file exists
 bool fileExist(const char* name) {
@@ -68,7 +75,7 @@ bool fileExist(const char* name) {
 }
 
 // Function to initialize the game
-void gameInit() {
+void gameInit(void) {
 
 	// Assign the seed to generate the random number between 0 and 640 (900 - 260 = 640)
 	srand(time(NULL));
@@ -107,17 +114,32 @@ void gameInit() {
 		}
 	}
 
+	curPlant = -1;
+	sunshine = 50;
+
 	// Initialize all the sunshineBalls stored
 	for (int i = 0; i < 29; i++) {
 		sprintf_s(name, sizeof(name), "res/sunshine/%d.png", i + 1);
+		loadimage(&imagSunshineBall[i], name);
 	}
 
 	// Create the game window
 	initgraph(WIN_WIDTH, WIN_HEIGHT, 1);
+
+	// Set the font
+	LOGFONT f;
+	gettextstyle(&f);
+	f.lfHeight = 30;
+	f.lfWeight = 15;
+	strcpy(f.lfFaceName, "Segoe UI Black");
+	f.lfQuality = ANTIALIASED_QUALITY; // Antialiase
+	settextstyle(&f);
+	setbkmode(TRANSPARENT);
+	setcolor(BLACK);
 }
 
 // Function to start the UI of the game
-void startUI() {
+void startUI(void) {
 	
 	// see resources for the usage of those images
 	IMAGE img_menu, img_start1, img_start2;
@@ -154,7 +176,7 @@ void startUI() {
 }
 
 // Function to update the window that the player sees
-void updateWindow() {
+void updateWindow(void) {
 	BeginBatchDraw(); // Start the buffer
 
 	putimage(0, 0, &imgBg);
@@ -188,16 +210,51 @@ void updateWindow() {
 		putimagePNG(curX - img_width / 2, curY - img_height / 2, img);
 	}
 
+	// Render the sunshine balls
+
+	int max_balls = sizeof(all_balls) / sizeof(all_balls[0]);
+	for (int i = 0; i < max_balls; i++) {
+		if (all_balls[i].in_use) {
+			IMAGE* img = &imagSunshineBall[all_balls[i].frameIndex];
+			putimagePNG(all_balls[i].x, all_balls[i].y, img);
+
+		}
+	}
+
+	// Show the available sunshine
+	char scoreText[8];
+	sprintf_s(scoreText, sizeof(scoreText), "%d", sunshine);
+	outtextxy(276, 67, scoreText);
+
 	EndBatchDraw(); // End the buffer
 }
 
+void collect_sunshine(ExMessage* msg) {
+	int count = sizeof(all_balls) / sizeof(all_balls[0]);
+	int width = imagSunshineBall[0].getwidth();
+	int height = imagSunshineBall[0].getheight();
+	for (int i = 0; i < count; i++) {
+		if (all_balls[i].in_use) {
+			int x = all_balls[i].x;
+			int y = all_balls[i].y;
+			if (msg->x > x && msg->x < x + width &&
+				msg->y > y && msg->y < y + height) {
+				all_balls[i].in_use = false;
+				sunshine += 25;
+				mciSendString("play res/sunshine.mp3", 0, 0, 0);
+			}
+		}
+	}
+}
+
 // Detect Click from user in game
-void userClick() {
+void userClick(void) {
 
 	ExMessage msg;
 	static int status = 0; // Stores if a plant is selected now
 	if (peekmessage(&msg)) {
 		if (msg.message == WM_LBUTTONDOWN) {
+			// Selecting plants
 			if (msg.x > 338 && msg.x < 338 + 65 * PLANTS_COUNT &&
 				msg.y < 96 && msg.y > 5) {
 				int index = (msg.x - 338) / 65;
@@ -206,6 +263,10 @@ void userClick() {
 				curPlant = index;
 				curX = msg.x;
 				curY = msg.y;
+			}
+			// Collect sunshine
+			else {
+				collect_sunshine(&msg);
 			}
 		}
 		else if (msg.message == WM_MOUSEMOVE && status == 1) {
@@ -232,7 +293,7 @@ void userClick() {
 
 }
 
-void createSunshine() {
+void createSunshine(void) {
 
 	// Limit the frequency of the sunshine generated
 	static int count = 0;
@@ -261,8 +322,32 @@ void createSunshine() {
 	}
 }
 
+void updateSunshine(void) {
+	int max_balls = sizeof(all_balls) / sizeof(all_balls[0]);
+	for (int i = 0; i < max_balls; i++) {
+		if (all_balls[i].in_use) {
+			all_balls[i].frameIndex = (all_balls[i].frameIndex + 1) % 29;
+
+			// If the sunshineball has not reached the ground, keep going downward
+			if (all_balls[i].timer == 0) {
+				all_balls[i].y += 2;
+			}
+
+			if (all_balls[i].y >= all_balls[i].dest_y) {
+				all_balls[i].timer++;
+
+				// the sunshineball disappears after 100 gameticks
+				if (all_balls[i].timer > 100) {
+					all_balls[i].in_use = false;
+				}
+				
+			}
+		}
+	}
+}
+
 // Update the map during the game
-void updateGame() {
+void updateGame(void) {
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 9; j++) {
 			if (map[i][j].type >= 0) {
@@ -277,6 +362,7 @@ void updateGame() {
 	}
 
 	createSunshine(); // Create the sunshine
+	updateSunshine(); // Update the status of the sunshine
 }
 
 int main(void) {
